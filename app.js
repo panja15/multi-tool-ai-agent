@@ -1,5 +1,3 @@
-import "dotenv/config";
-
 import helmet from "helmet";
 import express from "express";
 import rateLimit from "express-rate-limit";
