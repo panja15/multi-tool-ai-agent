@@ -1,6 +1,6 @@
 # 🚀 MCP AI Orchestrator
 
-An intelligent AI-powered backend system that uses the Model Context Protocol (MCP) to dynamically orchestrate tools like Calendar scheduling and Task management.
+An intelligent AI-powered backend system that uses the Model Context Protocol (MCP) to dynamically orchestrate tools like Calendar scheduling and Task management. 
 
 ---
 
