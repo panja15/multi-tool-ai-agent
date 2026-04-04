@@ -1,0 +1,28 @@
+{
+  "name": "hackathon-cohort-1",
+  "version": "1.0.0",
+  "description": "multi agent project",
+  "license": "ISC",
+  "author": "tushar panja",
+  "type": "module",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node app.js",
+    "dev": "nodemon app.js"
+  },
+  "dependencies": {
+    "@google-cloud/firestore": "^8.3.0",
+    "@google/generative-ai": "^0.24.1",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "body-parser": "^2.2.2",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.3.2",
+    "helmet": "^8.1.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "dotenv": "^17.4.0",
+    "nodemon": "^3.1.14"
+  }
+}
