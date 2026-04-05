@@ -3,8 +3,8 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
 import { logger } from "../utils/logger.js";
-import { executeTask } from "../tools/tasks.js";
-import { executeCalendar } from "../tools/calendar.js";
+import { executeTask, fetchPendingTasks, updateTask } from "../tools/tasks.js";
+import { executeCalendar, fetchUpcomingEvents } from "../tools/calendar.js";
 
 if (process.env.NODE_ENV !== "production") {
   await import("dotenv/config");
@@ -80,6 +80,7 @@ server.tool(
   {
     taskName: z.string().describe("The core action or task."),
     priority: z.string().describe("High, Medium, or Low"),
+    userId: z.string().describe("User identifier (email)"),
   },
   async (args) => {
     try {
@@ -98,6 +99,95 @@ server.tool(
         stack: error.stack,
       });
 
+      return {
+        content: [{ type: "text", text: `Error: ${error.message}` }],
+        isError: true,
+      };
+    }
+  },
+);
+
+// Fetch Pending Tasks
+server.tool(
+  "fetch_pending_tasks",
+  "Fetches the user's uncompleted (pending) tasks from Firestore.",
+  {
+    userId: z.string().optional().describe("User identifier (email)"),
+  },
+  async (args) => {
+    try {
+      logger.info("Executing fetch_pending_tasks", { args });
+      const result = await fetchPendingTasks(args);
+      logger.info("fetch_pending_tasks success", { result });
+
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    } catch (error) {
+      logger.error("fetch_pending_tasks failed", {
+        message: error.message,
+        stack: error.stack,
+      });
+      return {
+        content: [{ type: "text", text: `Error: ${error.message}` }],
+        isError: true,
+      };
+    }
+  },
+);
+
+// Update Task
+server.tool(
+  "update_task",
+  "Updates an existing task in Firestore (e.g. mark it as completed).",
+  {
+    taskId: z.string().describe("The ID of the document to update."),
+    status: z.string().optional().describe("New status, e.g. 'completed'"),
+    priority: z
+      .string()
+      .optional()
+      .describe("New priority, e.g. 'high', 'medium', 'low'"),
+  },
+  async (args) => {
+    try {
+      logger.info("Executing update_task", { args });
+      const result = await updateTask(args);
+      logger.info("update_task success", { result });
+
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    } catch (error) {
+      logger.error("update_task failed", {
+        message: error.message,
+        stack: error.stack,
+      });
+      return {
+        content: [{ type: "text", text: `Error: ${error.message}` }],
+        isError: true,
+      };
+    }
+  },
+);
+
+// Fetch Upcoming Calendar Events
+server.tool(
+  "fetch_upcoming_events",
+  "Fetches upcoming chronologically sorted events from the user's primary Google Calendar.",
+  {
+    maxResults: z
+      .number()
+      .optional()
+      .describe("Maximum number of upcoming events to fetch. Default is 10."),
+  },
+  async (args) => {
+    try {
+      logger.info("Executing fetch_upcoming_events", { args });
+      const result = await fetchUpcomingEvents(args);
+      logger.info("fetch_upcoming_events success", { result });
+
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    } catch (error) {
+      logger.error("fetch_upcoming_events failed", {
+        message: error.message,
+        stack: error.stack,
+      });
       return {
         content: [{ type: "text", text: `Error: ${error.message}` }],
         isError: true,
