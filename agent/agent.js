@@ -10,7 +10,7 @@ function convertMcpToGeminiTools(mcpTools) {
     const properties = {};
     // Ensure 'userId' is never required by Gemini
     const required = (tool.inputSchema?.required || []).filter(
-      (key) => key !== "userId"
+      (key) => key !== "userId",
     );
 
     for (const [key, value] of Object.entries(
@@ -66,6 +66,7 @@ export async function processPrompt(userId, userPrompt) {
 
     const toolResponse = await mcpClient.listTools();
     const geminiTools = convertMcpToGeminiTools(toolResponse.tools);
+    const currentTimeIST = getCurrentIST();
 
     // model
     const geminiModel = genAI.getGenerativeModel({
@@ -82,7 +83,7 @@ export async function processPrompt(userId, userPrompt) {
         - Only respond with plain text if NO tool is applicable.
         - If multiple actions are requested, call tools sequentially.
 
-        Current time: ${new Date().toLocaleString('en-IN')}
+        Current time: ${currentTimeIST}
       `,
       tools: [{ functionDeclarations: geminiTools }],
     });
@@ -140,7 +141,7 @@ export async function processPrompt(userId, userPrompt) {
           });
         }
 
-        // Send all function results back to the model 
+        // Send all function results back to the model
         result = await chat.sendMessage(functionResponses);
       } else {
         isDone = true;
@@ -152,7 +153,7 @@ export async function processPrompt(userId, userPrompt) {
         status: "Tools Executed via MCP",
         executed_tools: accumulatedResults.length,
         results: accumulatedResults,
-        final_agent_reply: result.response.text()
+        final_agent_reply: result.response.text(),
       };
     }
 
