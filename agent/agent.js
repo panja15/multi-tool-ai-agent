@@ -4,10 +4,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 
 import { logger } from "../utils/logger.js";
 
-let mcpClient;
-let geminiModel;
-
-// Helper: Translates standard MCP JSON Schema into Gemini's specific tool format
+// Helper: Convert MCP tools → Gemini tools
 function convertMcpToGeminiTools(mcpTools) {
   return mcpTools.map((tool) => {
     const properties = {};
@@ -21,6 +18,7 @@ function convertMcpToGeminiTools(mcpTools) {
         description: value.description || "",
       };
     }
+
     return {
       name: tool.name,
       description: tool.description,
@@ -29,74 +27,120 @@ function convertMcpToGeminiTools(mcpTools) {
   });
 }
 
-// Boot up the MCP connection and configure Gemini
-export async function initOrchestrator() {
-  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-  const transport = new StdioClientTransport({
-    command: process.execPath,
-    args: ["./agent/mcp-server.js"],
-    env: { ...process.env, IS_MCP_SERVER: "true" },
-  });
-  mcpClient = new Client(
-    { name: "orchestrator", version: "1.0" },
-    { capabilities: {} },
-  );
-
-  await mcpClient.connect(transport);
-  logger.info("✅ Orchestrator successfully connected to local MCP Server", {
-    action: "mcp_connect",
-  });
-
-  // Ask the server what tools it has
-  const toolResponse = await mcpClient.listTools();
-  const geminiTools = convertMcpToGeminiTools(toolResponse.tools);
-
-  // Initialize the AI with the dynamically loaded tools
-  geminiModel = genAI.getGenerativeModel({
-    model: process.env.GEMINI_MODEL,
-    systemInstruction: `
-      You are a strict AI Orchestrator.
-
-      Rules:
-      - NEVER ask follow-up questions.
-      - NEVER respond with conversational text if a tool can be used.
-      - ALWAYS extract best possible parameters and call a tool.
-      - If some fields are missing, infer reasonable defaults.
-      - If a tool is relevant → MUST call it.
-      - Only respond with plain text if NO tool is applicable.
-
-      Current time: ${new Date().toLocaleString()}
-    `,
-    tools: [{ functionDeclarations: geminiTools }],
-  });
-}
-
-// Handle the user prompt
 export async function processPrompt(userPrompt) {
-  const chat = geminiModel.startChat();
+  let transport;
+  const requestId = Math.random().toString(36).substring(7);
+  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-  const result = await chat.sendMessage(userPrompt);
-  const functionCalls = result.response.functionCalls();
+  try {
+    logger.info("Incoming request", { requestId, userPrompt });
 
-  if (functionCalls && functionCalls.length > 0) {
-    const call = functionCalls[0];
-    logger.info(`Routing task to MCP tool`, {
-      tool_name: call.name,
-      args: call.args,
+    // MCP connection
+    transport = new StdioClientTransport({
+      command: process.execPath,
+      args: ["./agent/mcp-server.js"], 
+      env: { ...process.env, IS_MCP_SERVER: "true" },
     });
 
-    const mcpResult = await mcpClient.callTool({
-      name: call.name,
-      arguments: call.args,
+    const mcpClient = new Client(
+      { name: "orchestrator", version: "1.0" },
+      { capabilities: {} },
+    );
+
+    logger.info("Connecting to MCP...", { requestId });
+
+    await Promise.race([
+      mcpClient.connect(transport),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("MCP connect timeout")), 5000),
+      ),
+    ]);
+
+    logger.info("MCP connected", { requestId });
+
+    const toolResponse = await mcpClient.listTools();
+    const geminiTools = convertMcpToGeminiTools(toolResponse.tools);
+
+    // model
+    const geminiModel = genAI.getGenerativeModel({
+      model: process.env.GEMINI_MODEL || "gemini-2.0-flash",
+      systemInstruction: `
+        You are a strict AI Orchestrator.
+
+        Rules:
+        - NEVER ask follow-up questions.
+        - NEVER respond with conversational text if a tool can be used.
+        - ALWAYS extract best possible parameters and call a tool.
+        - If some fields are missing, infer reasonable defaults.
+        - If a tool is relevant → MUST call it.
+        - Only respond with plain text if NO tool is applicable.
+
+        Current time: ${new Date().toLocaleString()}
+      `,
+      tools: [{ functionDeclarations: geminiTools }],
+    });
+
+    const chat = geminiModel.startChat();
+
+    const result = await chat.sendMessage(userPrompt);
+    const functionCalls = result.response.functionCalls();
+
+    // TOOL EXECUTION
+    if (functionCalls && functionCalls.length > 0) {
+      const call = functionCalls[0];
+
+      logger.info("Calling MCP tool", {
+        requestId,
+        tool: call.name,
+        args: call.args,
+      });
+
+      const mcpResult = await Promise.race([
+        mcpClient.callTool({
+          name: call.name,
+          arguments: call.args,
+        }),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("MCP tool timeout")), 10000),
+        ),
+      ]);
+
+      logger.info("Tool executed successfully", {
+        requestId,
+        tool: call.name,
+      });
+
+      return {
+        status: "Tool Executed via MCP",
+        agent_routed: call.name,
+        extracted_data: call.args,
+        result: JSON.parse(mcpResult.content[0].text),
+      };
+    }
+
+    return { reply: result.response.text() };
+  } catch (error) {
+    logger.error("Orchestrator Error", {
+      requestId,
+      message: error.message,
+      stack: error.stack,
     });
 
     return {
-      status: "Tool Executed via MCP",
-      agent_routed: call.name,
-      extracted_data: call.args,
-      result: JSON.parse(mcpResult.content[0].text),
+      error: "Execution failed",
+      details: error.message,
     };
+  } finally {
+    if (transport) {
+      try {
+        await transport.close();
+        logger.info("MCP connection closed", { requestId });
+      } catch (e) {
+        logger.error("Failed to close MCP transport", {
+          requestId,
+          error: e.message,
+        });
+      }
+    }
   }
-
-  return { reply: result.response.text() };
 }
