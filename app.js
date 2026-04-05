@@ -22,6 +22,11 @@ const limiter = rateLimit({
 app.use(express.json());
 app.use(helmet());
 app.set("trust proxy", 1);
+
+app.use((req, res, next) => {
+  req.user = process.env.USER_ID;
+  next();
+});
 app.use("/api", limiter);
 app.use("/api", apiRoutes);
 

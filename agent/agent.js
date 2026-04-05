@@ -8,11 +8,17 @@ import { logger } from "../utils/logger.js";
 function convertMcpToGeminiTools(mcpTools) {
   return mcpTools.map((tool) => {
     const properties = {};
-    const required = tool.inputSchema?.required || [];
+    // Ensure 'userId' is never required by Gemini
+    const required = (tool.inputSchema?.required || []).filter(
+      (key) => key !== "userId"
+    );
 
     for (const [key, value] of Object.entries(
       tool.inputSchema?.properties || {},
     )) {
+      // Hide the userId parameter from the agent completely
+      if (key === "userId") continue;
+
       properties[key] = {
         type: (value.type || "string").toUpperCase(),
         description: value.description || "",
@@ -27,7 +33,7 @@ function convertMcpToGeminiTools(mcpTools) {
   });
 }
 
-export async function processPrompt(userPrompt) {
+export async function processPrompt(userId, userPrompt) {
   let transport;
   const requestId = Math.random().toString(36).substring(7);
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
@@ -38,7 +44,7 @@ export async function processPrompt(userPrompt) {
     // MCP connection
     transport = new StdioClientTransport({
       command: process.execPath,
-      args: ["./agent/mcp-server.js"], 
+      args: ["./agent/mcp-server.js"],
       env: { ...process.env, IS_MCP_SERVER: "true" },
     });
 
@@ -74,47 +80,79 @@ export async function processPrompt(userPrompt) {
         - If some fields are missing, infer reasonable defaults.
         - If a tool is relevant → MUST call it.
         - Only respond with plain text if NO tool is applicable.
+        - If multiple actions are requested, call tools sequentially.
 
-        Current time: ${new Date().toLocaleString()}
+        Current time: ${new Date().toLocaleString('en-IN')}
       `,
       tools: [{ functionDeclarations: geminiTools }],
     });
 
     const chat = geminiModel.startChat();
 
-    const result = await chat.sendMessage(userPrompt);
-    const functionCalls = result.response.functionCalls();
+    let result = await chat.sendMessage(userPrompt);
+    const accumulatedResults = [];
+    let isDone = false;
+    let loopCount = 0;
 
-    // TOOL EXECUTION
-    if (functionCalls && functionCalls.length > 0) {
-      const call = functionCalls[0];
+    // AGENTIC EXECUTION LOOP
+    while (!isDone && loopCount < 5) {
+      loopCount++;
+      const functionCalls = result.response.functionCalls();
 
-      logger.info("Calling MCP tool", {
-        requestId,
-        tool: call.name,
-        args: call.args,
-      });
+      if (functionCalls && functionCalls.length > 0) {
+        const functionResponses = [];
 
-      const mcpResult = await Promise.race([
-        mcpClient.callTool({
-          name: call.name,
-          arguments: call.args,
-        }),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error("MCP tool timeout")), 10000),
-        ),
-      ]);
+        for (const call of functionCalls) {
+          logger.info("Calling MCP tool", {
+            requestId,
+            tool: call.name,
+            args: call.args,
+          });
 
-      logger.info("Tool executed successfully", {
-        requestId,
-        tool: call.name,
-      });
+          const mcpResult = await Promise.race([
+            mcpClient.callTool({
+              name: call.name,
+              arguments: { ...call.args, userId },
+            }),
+            new Promise((_, reject) =>
+              setTimeout(() => reject(new Error("MCP tool timeout")), 10000),
+            ),
+          ]);
 
+          logger.info("Tool executed successfully", {
+            requestId,
+            tool: call.name,
+          });
+
+          const parsedResult = JSON.parse(mcpResult.content[0].text);
+          accumulatedResults.push({
+            tool: call.name,
+            extracted_data: call.args,
+            result: parsedResult,
+          });
+
+          // Feed result back to Gemini so it can chain actions (like finding an ID, then updating it)
+          functionResponses.push({
+            functionResponse: {
+              name: call.name,
+              response: { result: parsedResult },
+            },
+          });
+        }
+
+        // Send all function results back to the model 
+        result = await chat.sendMessage(functionResponses);
+      } else {
+        isDone = true;
+      }
+    }
+
+    if (accumulatedResults.length > 0) {
       return {
-        status: "Tool Executed via MCP",
-        agent_routed: call.name,
-        extracted_data: call.args,
-        result: JSON.parse(mcpResult.content[0].text),
+        status: "Tools Executed via MCP",
+        executed_tools: accumulatedResults.length,
+        results: accumulatedResults,
+        final_agent_reply: result.response.text()
       };
     }
 

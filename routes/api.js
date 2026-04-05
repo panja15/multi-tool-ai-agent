@@ -10,7 +10,7 @@ router.post("/execute", async (req, res) => {
     if (!req.body.prompt)
       return res.status(400).json({ error: "Prompt required" });
 
-    const response = await processPrompt(req.body.prompt);
+    const response = await processPrompt(req.user, req.body.prompt);
     res.status(200).json(response);
   } catch (error) {
     logger.error(error);
