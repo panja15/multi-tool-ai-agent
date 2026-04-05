@@ -1,6 +1,7 @@
-import express from 'express';
+import express from "express";
 
-import { processPrompt } from '../agent/agent.js';
+import { logger } from "../utils/logger.js";
+import { processPrompt } from "../agent/agent.js";
 
 const router = express.Router();
 
@@ -12,7 +13,7 @@ router.post("/execute", async (req, res) => {
     const response = await processPrompt(req.body.prompt);
     res.status(200).json(response);
   } catch (error) {
-    console.error(error);
+    logger.error(error);
     res.status(500).json({ error: "Server error" });
   }
 });

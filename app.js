@@ -4,6 +4,11 @@ import rateLimit from "express-rate-limit";
 
 import apiRoutes from "./routes/api.js";
 import { initOrchestrator } from "./agent/agent.js";
+import { logger } from "./utils/logger.js";
+
+if (process.env.NODE_ENV !== "production") {
+  await import("dotenv/config");
+}
 
 const app = express();
 const limiter = rateLimit({
@@ -23,5 +28,8 @@ app.use("/api", apiRoutes);
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, async () => {
   await initOrchestrator();
-  console.log(`🚀 API Running on http://localhost:${PORT}`);
+  logger.info(`🚀 API Server running`, {
+    port: PORT,
+    environment: "production",
+  });
 });
