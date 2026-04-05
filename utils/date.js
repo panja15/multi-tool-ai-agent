@@ -1,4 +1,4 @@
-function getCurrentIST() {
+export function getCurrentIST() {
   const now = new Date();
 
   const formatter = new Intl.DateTimeFormat("en-GB", {
