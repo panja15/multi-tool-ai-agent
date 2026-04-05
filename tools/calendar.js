@@ -1,9 +1,10 @@
+import { logger } from "../utils/logger.js";
+
 export async function executeCalendar(args) {
-  console.error("[Tool] Executing schedule_meeting...");
+  logger.info("Executing schedule_meeting");
 
   try {
     const { summary, startTime, endTime } = args;
-    const token = process.env.GOOGLE_API_ACCESS_TOKEN;
     const eventPayload = {
       summary: summary,
       start: { dateTime: startTime, timeZone: "Asia/Kolkata" },
@@ -15,7 +16,7 @@ export async function executeCalendar(args) {
       {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${process.env.GOOGLE_API_ACCESS_TOKEN}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify(eventPayload),
@@ -35,7 +36,7 @@ export async function executeCalendar(args) {
       calendar_link: calendarData.htmlLink,
     };
   } catch (error) {
-    console.error("[Tool Error]", error);
+    logger.error("Failed to execute Calendar Tool", error);
     return {
       error: "Failed to execute Calendar Tool",
       details: error.message,

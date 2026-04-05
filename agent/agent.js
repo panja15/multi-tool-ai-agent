@@ -2,6 +2,8 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
+import { logger } from "../utils/logger.js";
+
 let mcpClient;
 let geminiModel;
 
@@ -31,8 +33,9 @@ function convertMcpToGeminiTools(mcpTools) {
 export async function initOrchestrator() {
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
   const transport = new StdioClientTransport({
-    command: "node",
+    command: process.execPath,
     args: ["./agent/mcp-server.js"],
+    env: { ...process.env, IS_MCP_SERVER: "true" },
   });
   mcpClient = new Client(
     { name: "orchestrator", version: "1.0" },
@@ -40,7 +43,9 @@ export async function initOrchestrator() {
   );
 
   await mcpClient.connect(transport);
-  console.log("✅ Orchestrator successfully connected to local MCP Server");
+  logger.info("✅ Orchestrator successfully connected to local MCP Server", {
+    action: "mcp_connect",
+  });
 
   // Ask the server what tools it has
   const toolResponse = await mcpClient.listTools();
@@ -75,10 +80,10 @@ export async function processPrompt(userPrompt) {
 
   if (functionCalls && functionCalls.length > 0) {
     const call = functionCalls[0];
-    console.log(
-      `[Orchestrator] Routing task to MCP tool: ${call.name} with args:`,
-      call.args,
-    );
+    logger.info(`Routing task to MCP tool`, {
+      tool_name: call.name,
+      args: call.args,
+    });
 
     const mcpResult = await mcpClient.callTool({
       name: call.name,
