@@ -3,7 +3,7 @@ import express from "express";
 import rateLimit from "express-rate-limit";
 
 import apiRoutes from "./routes/api.js";
-import { initOrchestrator } from "./agent/agent.js";
+// import { initOrchestrator } from "./agent/agent.js";
 import { logger } from "./utils/logger.js";
 
 if (process.env.NODE_ENV !== "production") {
@@ -27,9 +27,9 @@ app.use("/api", apiRoutes);
 
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, async () => {
-  await initOrchestrator();
+  // await initOrchestrator();
   logger.info(`🚀 API Server running`, {
     port: PORT,
-    environment: "production",
+    environment: process.env.NODE_ENV,
   });
 });
