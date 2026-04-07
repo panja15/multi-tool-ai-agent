@@ -35,4 +35,35 @@ The system interprets natural language prompts and executes real-world actions s
 
 ---
 
+## 🧪 How to Test the API
+
+This MVP is API-first. You can test the AI orchestrator using Postman or curl by sending a natural language prompt to the  `/api/execute endpoint`.
+
+Endpoint: ### https://mcp-orchestrator-608793880270.asia-south1.run.app/api/execute
+Method: **POST**
+Content-Type: application/json
+Request Body: 
+  ```json
+  { prompt: "" }
+  ```
+Response Object: 
+  ```json
+  {
+    "status": "Tools Executed via MCP",
+    "executed_tools": 3,
+    "results": [],
+    "final_agent_reply": "" //Summary of task execution
+  }
+  ```
+
+##🧪 Test curl
+
+```
+  curl -X POST https://mcp-orchestrator-608793880270.asia-south1.run.app/api/execute \
+    -H "Content-Type: application/json" \
+    -d '{
+      "prompt": "Create a high priority task to update resume"
+    }'
+```
+
 Author: Tushar Panja
